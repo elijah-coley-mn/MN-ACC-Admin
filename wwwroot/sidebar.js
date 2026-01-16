@@ -48,5 +48,12 @@ export function initTree(selector, onSelectionChanged) {
             onSelectionChanged( tokens[1], tokens[2]);
         }
     });
-    return new InspireTreeDOM(tree, { target: selector });
+    
+    const domTree = new InspireTreeDOM(tree, { target: selector });
+    
+    // Store tree instance globally for access from other modules
+    window.g_treeInstance = domTree;
+    window.g_tree = tree; 
+    
+    return domTree;
 }

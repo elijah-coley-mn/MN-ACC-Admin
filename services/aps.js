@@ -126,7 +126,43 @@ service.addProjectAdminACC = async (projectId, email, token) => {
     return resp;
 }
 
+service.addProjectUserACC = async (projectId, userEmail, companyId, roleIds, products, token) => {
+    const url = `https://developer.api.autodesk.com/construction/admin/v1/projects/${projectId.split(':')[0].replace('b.', '')}/users`;
+    
+    const body = {
+        email: userEmail,
+        companyId: companyId,
+        suppressAdministrativeEmails: true  // Don't spam users with emails
+    };
+    
+    if (roleIds && roleIds.length > 0) {
+        body.roleIds = roleIds;
+    }
+    
+    if (products && products.length > 0) {
+        body.products = products;
+    }
+    
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+    });
+    
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to add user: ${response.status} - ${errorText}`);
+    }
+    
+    return await response.json();
+};
+
 service.importProjectUsersACC = async (projectId, projectUsers, token) => {
     const resp = await adminClient.importProjectUsers(projectId, projectUsers, { accessToken: token });
     return resp;
 }
+
+module.exports = service;

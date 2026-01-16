@@ -1,7 +1,7 @@
 const express = require('express');
 var bodyParser = require('body-parser');
 
-const { authRefreshMiddleware, getProjectsACC, getProjectACC, getProjectUsersACC, createProjectACC, importProjectUsersACC, addProjectAdminACC, getUserProfile } = require('../services/aps.js');
+const { authRefreshMiddleware, getProjectsACC, getProjectACC, getProjectUsersACC, createProjectACC, importProjectUsersACC, addProjectAdminACC, getUserProfile, addProjectUserACC } = require('../services/aps.js');
 
 let router = express.Router();
 
@@ -75,6 +75,88 @@ router.post('/api/admin/project/users', bodyParser.json(), async function (req, 
     } catch (err) {
         next(err);
     }
+});
+
+router.post('/users/:userId/assign-projects', async (req, res, next) => {
+    const userId = req.params.userId;
+    const { projectIds } = req.body; // Array of project IDs
+    
+    try {
+        const results = await Promise.allSettled(
+            projectIds.map(projectId => 
+                adminClient.addUserToProject(projectId, userId, req.session)
+            )
+        );
+        
+        const summary = {
+            successful: results.filter(r => r.status === 'fulfilled').length,
+            failed: results.filter(r => r.status === 'rejected').length,
+            details: results.map((result, index) => ({
+                projectId: projectIds[index],
+                status: result.status,
+                error: result.status === 'rejected' ? result.reason.message : null
+            }))
+        };
+        
+        res.json(summary);
+    } catch (err) {
+        next(err);
+    }
+});
+
+router.post('/api/admin/batch-assign', bodyParser.json(), async function (req, res, next) {
+    const { accountId, userEmail, companyId, roleIds, products, projectIds, roleId } = req.body;
+    
+    if (!accountId || !userEmail || !companyId || !projectIds || projectIds.length === 0) {
+        return res.status(400).json({ error: 'Missing required parameters' });
+    }
+    
+    // Filter products to only include the four we need
+    const allowedProducts = ['docs', 'designCollaboration', 'modelCoordination', 'insight'];
+    const filteredProducts = products ? products.filter(p => allowedProducts.includes(p.key)) : [];
+    
+    // Process in batches with delays to avoid rate limits
+    const results = [];
+    const batchSize = 10; // Process 10 at a time
+    const delayMs = 1000; // 1 second delay between batches
+    
+    for (let i = 0; i < projectIds.length; i += batchSize) {
+        const batch = projectIds.slice(i, i + batchSize);
+        
+        const batchResults = await Promise.allSettled(
+            batch.map(async (projectId) => {
+                try {
+                    const finalRoleIds = roleId ? [roleId] : roleIds;
+                    
+                    await addProjectUserACC(projectId, userEmail, companyId, finalRoleIds, filteredProducts, req.oAuthToken.access_token);
+                    
+                    return { projectId, success: true };
+                } catch (err) {
+                    throw new Error(err.message);
+                }
+            })
+        );
+        
+        results.push(...batchResults);
+        
+        // Delay between batches (except for the last batch)
+        if (i + batchSize < projectIds.length) {
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+    }
+    
+    const summary = {
+        total: projectIds.length,
+        successful: results.filter(r => r.status === 'fulfilled').length,
+        failed: results.filter(r => r.status === 'rejected').length,
+        details: results.map((result, index) => ({
+            projectId: projectIds[index],
+            success: result.status === 'fulfilled',
+            error: result.status === 'rejected' ? result.reason.message : null
+        }))
+    };
+    
+    res.json(summary);
 });
 
 module.exports = router;

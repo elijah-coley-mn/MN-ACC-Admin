@@ -1,9 +1,17 @@
+import { initBatchAssign, isBatchAssignActive } from './batch-assign.js';
+
 const TABLE_TABS = {
     'PROJECTS': {
         'REQUEST_URL': '/api/admin/projects',
         'TAB_NAME': 'PROJECTS',
         'CATEGORY_NAME': 'hub',
         'CATEGORY_DEFAULT': true
+    },
+    'BATCH_ASSIGN': {
+        'REQUEST_URL': '/api/admin/batch-assign',
+        'TAB_NAME': 'BATCH ASSIGN',
+        'CATEGORY_NAME': 'hub',
+        'CATEGORY_DEFAULT': false
     },
     'PROJECT': {
         'REQUEST_URL': '/api/admin/project',
@@ -244,7 +252,25 @@ class Table {
 
 export async function refreshTable( accountId = null, projectId=null ) {
     $("#loadingoverlay").fadeIn()
+    
+    // GET ACTIVE TAB FIRST - before any visibility changes
+    const activeTab = $("ul#adminTableTabs li.active")[0].id;
+    
+    // HANDLE BATCH ASSIGN IMMEDIATELY - before tab switching
+    if (activeTab === 'BATCH_ASSIGN') {
+        console.log('BATCH_ASSIGN active, calling initBatchAssign with:', accountId);
+        if (!accountId) {
+            $("#loadingoverlay").fadeOut();
+            return;
+        }
+        initBatchAssign(accountId);
+        $("#loadingoverlay").fadeOut();
+        return;
+    }
+    
+    // Show/hide tabs based on selection
     if( TABLE_TABS[g_accDataTable.tabKey].CATEGORY_NAME=='hub' && projectId ){
+        // Clicked on a project - hide hub tabs, show project tabs
         for (let key in TABLE_TABS) {
             if( TABLE_TABS[key].CATEGORY_NAME == 'hub' ){
                 $("#" + key).addClass("hidden");
@@ -258,6 +284,7 @@ export async function refreshTable( accountId = null, projectId=null ) {
         } 
     }
     if (TABLE_TABS[g_accDataTable.tabKey].CATEGORY_NAME == 'project' && !projectId) {
+        // Clicked on hub - show hub tabs, hide project tabs  
         for (let key in TABLE_TABS) {
             if (TABLE_TABS[key].CATEGORY_NAME == 'hub') {
                 $("#" + key).removeClass("hidden");
@@ -270,7 +297,17 @@ export async function refreshTable( accountId = null, projectId=null ) {
             }
         }
     }
-    const activeTab = $("ul#adminTableTabs li.active")[0].id;
+    
+    // If we just switched to hub view and no hub tabs were showing, make sure hub tabs are visible
+    if (!projectId && accountId) {
+        // We're at hub level - ensure hub tabs are visible
+        for (let key in TABLE_TABS) {
+            if (TABLE_TABS[key].CATEGORY_NAME == 'hub') {
+                $("#" + key).removeClass("hidden");
+            }
+        }
+    }
+    
     try{
         await g_accDataTable.resetData( activeTab, accountId, projectId );
         g_accDataTable.drawTable();
@@ -288,16 +325,65 @@ export async function initTableTabs(){
     } 
     // event on the tabs
     $('a[data-toggle="tab"]').on('shown.bs.tab', async function (e) {
-        $("#loadingoverlay").fadeIn()
-        const activeTab = e.target.parentElement.id;
-        try {
-            await g_accDataTable.resetData(activeTab);
-            g_accDataTable.drawTable();
-        } catch (err) {
-            console.warn(err);
-        }    
-        $("#loadingoverlay").fadeOut()
-    });  
+    $("#loadingoverlay").fadeIn()
+    const activeTab = e.target.parentElement.id;
+    
+    // Handle batch assign tab FIRST
+    if (activeTab === 'BATCH_ASSIGN') {
+        // Get account from sidebar selection, or use first hub if none selected
+        const selectedNode = window.g_tree && window.g_tree.selected()[0];
+        let accountId = null;
+        
+        if (selectedNode) {
+            const tokens = selectedNode.id.split('|');
+            if (tokens[0] === 'hub') {
+                accountId = tokens[1];
+            } else if (tokens[0] === 'project') {
+                accountId = tokens[1];
+            }
+        } else if (window.g_tree) {
+            // No selection - get the first hub
+            const firstNode = window.g_tree.nodes()[0];
+            if (firstNode) {
+                const tokens = firstNode.id.split('|');
+                if (tokens[0] === 'hub') {
+                    accountId = tokens[1];
+                }
+            }
+        }
+        
+        if (accountId) {
+            initBatchAssign(accountId);
+        } else {
+            alert('Please select an account from the sidebar first.');
+        }
+        $("#loadingoverlay").fadeOut();
+        return;
+    }
+    
+    // Get current account/project from sidebar selection for other tabs
+    const selectedNode = window.g_tree && window.g_tree.selected()[0];
+    let accountId = null;
+    let projectId = null;
+    
+    if (selectedNode) {
+        const tokens = selectedNode.id.split('|');
+        if (tokens[0] === 'hub') {
+            accountId = tokens[1];
+        } else if (tokens[0] === 'project') {
+            accountId = tokens[1];
+            projectId = tokens[2];
+        }
+    }
+    
+    try {
+        await g_accDataTable.resetData(activeTab, accountId, projectId);
+        g_accDataTable.drawTable();
+    } catch (err) {
+        console.warn(err);
+    }    
+    $("#loadingoverlay").fadeOut()
+    });
 }
 
 var g_accDataTable = new Table('#accTable' );

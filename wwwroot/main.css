@@ -114,3 +114,16 @@ body, html {
     background-image: url(https://raw.githubusercontent.com/primer/octicons/main/icons/project-16.svg); /* or https://raw.githubusercontent.com/primer/octicons/main/icons/organization-16.svg */
     background-size: cover;
 }
+
+.project-checklist label {
+    cursor: pointer;
+    padding: 5px;
+}
+
+.project-checklist label:hover {
+    background-color: #f0f0f0;
+}
+
+.project-checkbox {
+    margin-right: 8px;
+}
